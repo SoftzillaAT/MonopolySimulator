@@ -823,128 +823,144 @@ class Player:
 
 
     def play(self):
+        roll_dices = True
+        num_of_rolls = 0
 
-        tuple_dices = self.roll_dice()
-        self._dice_value = tuple_dices[0] + tuple_dices[1]
-        if self._position is not 10 or (self._position == 10 and self._free_visit):  # if player is not in jail
-            self._position = (self._position + self._dice_value) % len(self._list_board)
-            self._free_visit = True if self._position == 10 else False
-
-            # check if player passed Go. If yes, get 200 $
-            if self._position - self._dice_value < 0:
-                self._cash += 200
-
-        board_cell = self._list_board[self._position]
-        board_cell_type = board_cell['type']
-
-        # Buy a house or hotel
-        if self.owns_all_roads_of_a_color() and self.want_to_buy_house_hotel():
-
-            road, house_or_hotel = self.choose_house_hotel_to_buy()
-            if house_or_hotel == 'house' and self._bank['houses'] > 0 and self._dict_owned_houses_hotels[road][0] < 4:
-                house_price = self._dict_roads[road]['houses_cost']
-                if self.have_enough_money(house_price):
-                    self.buy_house(road)
-                else:
-                    if self.want_to_mortgage_to_buy_house():
-                        if self._properties_total_mortgageable_amount + self._cash >= house_price:
-                            self.get_money_from_mortgages(house_price)
-                            self.buy_house(road)
-            elif house_or_hotel == 'hotel' and self._bank['hotels'] > 0 and self._dict_owned_houses_hotels[road][1] == 0:
-                hotel_price = self._dict_roads[road]['hotels_cost']
-                if self.have_enough_money(hotel_price):
-                    self.buy_hotel(road)
-                else:
-                    if self.want_to_mortgage_to_buy_hotel():
-                        if self._properties_total_mortgageable_amount + self._cash >= hotel_price:
-                            self.get_money_from_mortgages(hotel_price)
-                            self.buy_hotel(road)
-
-        # Unmortgage property
-        if self._properties_total_mortgageable_amount > 0 and self.want_to_unmortgage():
-            list_unmortgage_properties = self.choose_unmortgage_properties()
-            for property_type, property_name in list_unmortgage_properties:
-                self.unmortgage(property_name, property_type)
-
-        if board_cell_type == 'jail' and not self._free_visit:
-            # Double roll
+        while (roll_dices):
+            roll_dices = False
+            move_position = True
+            tuple_dices = self.roll_dice()
+            num_of_rolls = num_of_rolls + 1
+            # On double roll play again
             if tuple_dices[0] == tuple_dices[1]:
-                self.get_out_of_jail()
+                roll_dices = True
+                if num_of_rolls == 3:
+                    self.go_to_jail()
+                    move_position = False
 
-            # Player has been 3 rounds in jail
-            elif self._jail_count == 3:
-                if self.have_enough_money(50):
-                    self.pay_bank(50)
+            if (move_position):
+                self._dice_value = tuple_dices[0] + tuple_dices[1]
+                if self._position is not 10 or (self._position == 10 and self._free_visit):  # if player is not in jail
+                    self._position = (self._position + self._dice_value) % len(self._list_board)
+                    self._free_visit = True if self._position == 10 else False
+
+                    # check if player passed Go. If yes, get 200 $
+                    if self._position - self._dice_value < 0:
+                        self._cash += 200
+
+            board_cell = self._list_board[self._position]
+            board_cell_type = board_cell['type']
+
+            # Buy a house or hotel
+            if self.owns_all_roads_of_a_color() and self.want_to_buy_house_hotel():
+
+                road, house_or_hotel = self.choose_house_hotel_to_buy()
+                if house_or_hotel == 'house' and self._bank['houses'] > 0 and self._dict_owned_houses_hotels[road][0] < 4:
+                    house_price = self._dict_roads[road]['houses_cost']
+                    if self.have_enough_money(house_price):
+                        self.buy_house(road)
+                    else:
+                        if self.want_to_mortgage_to_buy_house():
+                            if self._properties_total_mortgageable_amount + self._cash >= house_price:
+                                self.get_money_from_mortgages(house_price)
+                                self.buy_house(road)
+                elif house_or_hotel == 'hotel' and self._bank['hotels'] > 0 and self._dict_owned_houses_hotels[road][1] == 0:
+                    hotel_price = self._dict_roads[road]['hotels_cost']
+                    if self.have_enough_money(hotel_price):
+                        self.buy_hotel(road)
+                    else:
+                        if self.want_to_mortgage_to_buy_hotel():
+                            if self._properties_total_mortgageable_amount + self._cash >= hotel_price:
+                                self.get_money_from_mortgages(hotel_price)
+                                self.buy_hotel(road)
+
+            # Unmortgage property
+            if self._properties_total_mortgageable_amount > 0 and self.want_to_unmortgage():
+                list_unmortgage_properties = self.choose_unmortgage_properties()
+                for property_type, property_name in list_unmortgage_properties:
+                    self.unmortgage(property_name, property_type)
+
+            if board_cell_type == 'jail' and not self._free_visit:
+                # In jail we do not play again
+                roll_dices = False
+                # Double roll
+                if tuple_dices[0] == tuple_dices[1]:
                     self.get_out_of_jail()
-                else:
-                    if not self.is_bankrupt(50):
-                        amount_to_mortgage = 50 - self._cash
-                        self.get_money_from_mortgages(amount_to_mortgage)
-                        self.pay_bank(50)
-                        self.get_out_of_jail()
 
-            # Player decides to pay or wait in jail
-            else:
-                if self.pay_jail_or_wait() == 'wait':
-                    self._jail_count += 1
-                else:
+                # Player has been 3 rounds in jail
+                elif self._jail_count == 3:
                     if self.have_enough_money(50):
                         self.pay_bank(50)
                         self.get_out_of_jail()
                     else:
                         if not self.is_bankrupt(50):
-                            self.get_money_from_mortgages(50)
+                            amount_to_mortgage = 50 - self._cash
+                            self.get_money_from_mortgages(amount_to_mortgage)
                             self.pay_bank(50)
                             self.get_out_of_jail()
 
-        elif board_cell_type == 'road' or board_cell_type == 'station' or board_cell_type == 'utility':
-            property_name = board_cell['name']
-            dict_property_info = self._dict_roads[property_name] if board_cell_type == 'road' else self._dict_properties[property_name]
-            property_owner = dict_property_info['belongs_to']
-            if property_name in self._list_owned_roads or property_name in self._list_owned_stations or property_name in self._list_owned_utilities:
+                # Player decides to pay or wait in jail
+                else:
+                    if self.pay_jail_or_wait() == 'wait':
+                        self._jail_count += 1
+                    else:
+                        if self.have_enough_money(50):
+                            self.pay_bank(50)
+                            self.get_out_of_jail()
+                        else:
+                            if not self.is_bankrupt(50):
+                                self.get_money_from_mortgages(50)
+                                self.pay_bank(50)
+                                self.get_out_of_jail()
+
+            elif board_cell_type == 'road' or board_cell_type == 'station' or board_cell_type == 'utility':
+                property_name = board_cell['name']
+                dict_property_info = self._dict_roads[property_name] if board_cell_type == 'road' else self._dict_properties[property_name]
+                property_owner = dict_property_info['belongs_to']
+                if property_name in self._list_owned_roads or property_name in self._list_owned_stations or property_name in self._list_owned_utilities:
+                    pass
+                elif property_owner is None:
+                    if self.have_enough_money(dict_property_info['price']):
+                        buy_bid = self.buy_or_bid(dict_property_info)
+                        if buy_bid == 'buy' and board_cell_type == 'road':
+                            self.buy(dict_property_info, property_name)
+                        elif buy_bid == 'buy' and board_cell_type != 'road':
+                            self.buy_property(dict_property_info)
+                        else:
+                            self.bid(dict_property_info, 'temp')
+                    elif self.have_enough_money(dict_property_info['price'], plus_mortgageable=True):
+                        mortgage_bid = self.mortgage_or_bid(dict_property_info)
+                        if mortgage_bid == 'mortgage':
+                            self.mortgage_and_buy(dict_property_info, property_name, board_cell_type)
+                        else:
+                            self.bid(dict_property_info, 'temp')
+                    else:
+                        # Players with no money should bid
+                        self.bid(dict_property_info, 'temp')
+                elif property_owner is not None and dict_property_info['is_mortgaged'] is False:
+                    # Have enough money to rent?
+                    rent = self.estimate_rent(dict_property_info)
+                    if self.have_enough_money(rent):  # TODO should it check money + mortgageable amount?
+                        self.pay_rent(dict_property_info, rent)
+                    else:
+                        if not self.is_bankrupt(rent):
+                            self.mortgage_and_pay_rent(dict_property_info)
+                    # self.make_offer(road_owner)  # This should be possible at any time in the game...
+
+            elif board_cell_type == 'go' or board_cell_type == 'free parking':
                 pass
-            elif property_owner is None:
-                if self.have_enough_money(dict_property_info['price']):
-                    buy_bid = self.buy_or_bid(dict_property_info)
-                    if buy_bid == 'buy' and board_cell_type == 'road':
-                        self.buy(dict_property_info, property_name)
-                    elif buy_bid == 'buy' and board_cell_type != 'road':
-                        self.buy_property(dict_property_info)
-                    else:
-                        self.bid(dict_property_info, 'temp')
-                elif self.have_enough_money(dict_property_info['price'], plus_mortgageable=True):
-                    mortgage_bid = self.mortgage_or_bid(dict_property_info)
-                    if mortgage_bid == 'mortgage':
-                        self.mortgage_and_buy(dict_property_info, property_name, board_cell_type)
-                    else:
-                        self.bid(dict_property_info, 'temp')
-                else:
-                    # Players with no money should bid
-                    self.bid(dict_property_info, 'temp')
-            elif property_owner is not None and dict_property_info['is_mortgaged'] is False:
-                # Have enough money to rent?
-                rent = self.estimate_rent(dict_property_info)
-                if self.have_enough_money(rent):  # TODO should it check money + mortgageable amount?
-                    self.pay_rent(dict_property_info, rent)
-                else:
-                    if not self.is_bankrupt(rent):
-                        self.mortgage_and_pay_rent(dict_property_info)
-                # self.make_offer(road_owner)  # This should be possible at any time in the game...
 
-        elif board_cell_type == 'go' or board_cell_type == 'free parking':
-            pass
+            elif board_cell_type == 'tax':
+                tax_amount = self.get_tax_value(board_cell['name'])
+                self.pay_tax(tax_amount)
 
-        elif board_cell_type == 'tax':
-            tax_amount = self.get_tax_value(board_cell['name'])
-            self.pay_tax(tax_amount)
+            elif board_cell_type == 'go to jail':
+                self.go_to_jail()
 
-        elif board_cell_type == 'go to jail':
-            self.go_to_jail()
-
-        elif board_cell_type == 'community chest':
-            card_name = self.community_cards_deck[0]  # Choose top card
-            self.community_cards_deck.append(self.community_cards_deck.pop(0))  # Put top card at the bottom of the deck
-            self.play_community_chest(card_name)
+            elif board_cell_type == 'community chest':
+                card_name = self.community_cards_deck[0]  # Choose top card
+                self.community_cards_deck.append(self.community_cards_deck.pop(0))  # Put top card at the bottom of the deck
+                self.play_community_chest(card_name)
 
     @property
     def cash(self):

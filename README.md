@@ -2,6 +2,11 @@
 
 > Monopoly simulator based on Python.
 
+conda activate monopoly
+
+To start in jupyter in conda environment: 
+jupyter notebook dummy_vs_no_brown_players.ipynb
+
 <p align="center">
 <img src="images/monopoly_board.jpg" width="400" />
 </p>
