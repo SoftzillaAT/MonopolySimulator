@@ -2,16 +2,11 @@
 
 > Monopoly simulator based on Python.
 
-conda activate monopoly
-
-To start in jupyter in conda environment: 
-jupyter notebook dummy_vs_no_brown_players.ipynb
-
 <p align="center">
 <img src="images/monopoly_board.jpg" width="400" />
 </p>
 
-Monopoly simulator allows you to rapidly simulate the game of monopoly with N players. While the library provides an implementation of a simple naive player ("dummy"), their behaviour can be modified to test hypotheses about the best strategies and train intelligent agents with Machine Learning.
+Monopoly simulator allows you to rapidly simulate the game of Monopoly with pluggable player strategies and a DQN reinforcement-learning agent. The library provides a naive baseline player ("dummy") whose behaviour can be extended to test hypotheses about optimal strategies or train ML agents.
 
 ## Install
 
@@ -90,31 +85,30 @@ A game is started setting the table's components: board, community chest cards a
 
 ```python
 from monosim.player import Player
-from monosim.board import get_board, get_roads, get_properties, get_community_chest_cards, get_bank
+from monosim.board import get_board, get_roads, get_properties, \
+    get_community_chest_cards, get_chance_cards, get_bank
+import random
 
+for seed in range(0, 10000):
+    random.seed(seed)
+    bank            = get_bank()
+    list_board      = get_board()
+    dict_roads      = get_roads()
+    dict_properties = get_properties()
+    community_deck  = list(get_community_chest_cards().keys())
+    chance_deck     = list(get_chance_cards().keys())
 
-if __name__ == '__main__':
-    import random
-    for seed in range(0, 10000):
-        random.seed(seed)
-        bank = get_bank()
-        list_board, dict_roads = get_board(),  get_roads()
-        dict_properties = get_properties()
-        dict_community_chest_cards = get_community_chest_cards()
-        community_cards_deck = list(dict_community_chest_cards.keys())
-        player1 = Player('player1', 1, bank, list_board, dict_roads, dict_properties, community_cards_deck)
-        player2 = Player('player2', 2, bank, list_board, dict_roads, dict_properties, community_cards_deck)
+    player1 = Player('player1', 1, bank, list_board, dict_roads, dict_properties, community_deck, chance_deck)
+    player2 = Player('player2', 2, bank, list_board, dict_roads, dict_properties, community_deck, chance_deck)
 
-        player1.meet_other_players([player2])
-        player2.meet_other_players([player1])
+    player1.meet_other_players([player2])
+    player2.meet_other_players([player1])
 
-        list_players = [player1, player2]
-
-        idx_count = 0
-        while not player1.has_lost() and not player2.has_lost() and idx_count < 2000:
-            for player in list_players:
-                player.play()
-            idx_count += 1
+    idx_count = 0
+    while not player1.has_lost() and not player2.has_lost() and idx_count < 2000:
+        for player in [player1, player2]:
+            player.play()
+        idx_count += 1
 ```
 
 ## Personalize players
@@ -162,7 +156,7 @@ Here's the notebook used to run these simulations: [Stations and utilities.](not
 </p>
 
 ### K-arm trained player
-Here a player learns whether it's good to buy a brown property or not. The problem is posed as a simple K-arm bandit problem, where the reward is 1 if the player wins, and 0 otherwise. 
+Here a player learns whether it's good to buy a brown property or not. The problem is posed as a simple K-arm bandit problem, where the reward is 1 if the player wins, and 0 otherwise.
 The agent's action-value is estimated using the sample-average method. The figure below (left) shows the expected reward, incrementally updated using a greedy algorithm. The right figure below
 shows the average reward training the agent with an epsilon-greedy algorithm. In this version of the algorithm, the action ("buy" vs "do-not-buy") is chosen randomly with probability epsilon. This
 algorithm, unlike the previous, allows the agent exploring different strategies to understand if it's convenient to buy a brown property or not. The figure shows the results for different choices of the
@@ -174,3 +168,17 @@ Further details in the notebook: [No-brown player using a K-Arm greedy agent.](n
   <img src="images/k_arm_greedy_no_brown_avg_reward.png" width="400" />
   <img src="images/k_arm_epsilon_greedy_multi_eps_no_brown_avg_reward.png" width="400" />
 </p>
+
+### DQN Reinforcement-Learning agent
+
+A Deep Q-Network agent (`rl` player type) learns to bid in auctions. The state space has 14 features (cash, opponent cash, property price, portfolio composition, color-group progress, etc.) and the action space covers absolute bid amounts from 0 to 800 in steps of 50 (17 actions total).
+
+The agent is trained via `train.py` and can be evaluated with `run.py`. After 100k episodes vs. the dummy player followed by self-play, the agent reaches ~38–44% win rate against dummy.
+
+```bash
+# Train from scratch
+python train.py --gegner dummy --episoden 50000 --speichern rl_model.pt
+
+# Evaluate
+python run.py rl dummy --modell rl_model.pt --spiele 1000
+```
