@@ -15,16 +15,75 @@ Monopoly simulator allows you to rapidly simulate the game of monopoly with N pl
 
 ## Install
 
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install monopoly_simulator.
+```bash
+pip install -e .
+```
+
+## CLI Usage
+
+### Simulation (`run.py`)
+
+Zwei Spieler gegeneinander simulieren:
 
 ```bash
-pip install -i https://test.pypi.org/project/MonopolySimulator/0.0.1/
+# 1000 Spiele: dummy vs. greedy
+python run.py dummy greedy --spiele 1000
+
+# 500 Spiele: RL-Agent vs. dummy (Modell laden)
+python run.py rl dummy --modell rl_model.pt --spiele 500
+
+# 10 Spiele mit detaillierten Kauf-Logs pro Spiel
+python run.py rl dummy --modell rl_model.pt --spiele 10 --logs logs/
+
+# Auf GPU laufen lassen (cuda oder mps) — Standard ist cpu
+python run.py rl dummy --modell rl_model.pt --spiele 500 --device cuda
 ```
-### version 0.0.2
-* In this version "chance" cards are not implemented yet.
-* Bids are not implemented.
-* Trading is not implemented.
-* **NOTE:** The game can reach stalemate. This is possible when trading cannot be done. This will be implemented in the future version, but for now a maximum number of turn should be set when running a simulation.
+
+Verfügbare Spielertypen:
+
+| Typ | Beschreibung |
+|-----|--------------|
+| `dummy` | Startet immer Auktionen, bietet bis 80 % des Bargelds (max. Listenpreis) |
+| `no_brown` | Wie dummy, kauft keine braunen Straßen |
+| `greedy` | Versteigert eigene Immobilien im eigenen Zug um jeden Kauf zu finanzieren |
+| `cautious` | Bietet nur wenn reicher als alle Gegner |
+| `rl` | DQN-Agent — bietet absolute Beträge von 0–800 (Schritt 50) |
+
+### Training (`train.py`)
+
+```bash
+# RL gegen dummy trainieren (10 000 Episoden, Checkpoint speichern)
+python train.py --gegner dummy --episoden 10000 --speichern rl_model.pt
+
+# RL gegen greedy trainieren
+python train.py --gegner greedy --episoden 20000 --speichern rl_vs_greedy.pt
+
+# Self-play (Agent spielt gegen sich selbst)
+python train.py --selfplay --episoden 50000 --speichern rl_selfplay.pt
+
+# Training fortsetzen (Checkpoint wird automatisch geladen falls vorhanden)
+python train.py --gegner dummy --episoden 50000 --speichern rl_model.pt
+
+# Auf GPU trainieren (cuda oder mps) — Standard ist cpu
+python train.py --gegner dummy --episoden 50000 --speichern rl_model.pt --device cuda
+```
+
+> **Hinweis Device:** Das Netzwerk ist klein — in Benchmarks läuft `cpu` rund 3× schneller als `mps` (Apple Silicon), weil der GPU-Transfer-Overhead überwiegt. `--device cpu` ist der empfohlene Default. `cuda`/`mps` lohnen sich erst bei deutlich größeren Architekturen.
+
+Das Training gibt alle 500 Episoden eine Statuszeile aus:
+
+```
+[  6500/50000]  Siege  208 | Niederlagen  260 | Unentschieden  32 | Siegrate 44.4% | ε=0.050 | Buffer  50000
+```
+
+### Spiel-Logs
+
+Mit `--logs <verzeichnis>` schreibt `run.py` eine Datei pro Spiel (`spiel_0000.txt`, …) mit allen Käufen und dem Kontostand beider Spieler nach jedem Kauf:
+
+```
+rl kauft 'mayfair' — gezahlt: 325 (Normalpreis: 400) | Kontostand: rl: 340, dummy: 405
+dummy kauft 'bond street' — gezahlt: 225 (Normalpreis: 320) | Kontostand: dummy: 165, rl: 224
+```
 
 ## Usage
 A game is started setting the table's components: board, community chest cards and bank. Each player in the game receives these components and meets the other opponents (e.g., player1.meet_other_players([player2])). Each game's turn is run executing the command player.play(). The game ends when N-1 players have lost.

@@ -90,9 +90,9 @@ def run_episode_selfplay(agent, seed, max_turns=2000):
     return won1, won2, draw
 
 
-def train_selfplay(num_episodes=10000, save_path='rl_model.pt'):
+def train_selfplay(num_episodes=10000, save_path='rl_model.pt', device='cpu'):
     import os
-    agent = RLAgent()
+    agent = RLAgent(device=device)
 
     if os.path.exists(save_path):
         agent.load(save_path)
@@ -123,9 +123,9 @@ def train_selfplay(num_episodes=10000, save_path='rl_model.pt'):
     return agent
 
 
-def train(opponent_type='dummy', num_episodes=10000, save_path='rl_model.pt'):
+def train(opponent_type='dummy', num_episodes=10000, save_path='rl_model.pt', device='cpu'):
     import os
-    agent        = RLAgent()
+    agent        = RLAgent(device=device)
     OpponentClass = PLAYER_TYPES[opponent_type]
 
     if os.path.exists(save_path):
@@ -163,9 +163,11 @@ if __name__ == '__main__':
     parser.add_argument('--episoden',  type=int, default=10000)
     parser.add_argument('--speichern', default='rl_model.pt')
     parser.add_argument('--selfplay',  action='store_true')
+    parser.add_argument('--device',    default='cpu', metavar='GERÄT',
+                        help='PyTorch-Device (cpu, cuda, mps) — Standard: cpu')
     args = parser.parse_args()
 
     if args.selfplay:
-        train_selfplay(args.episoden, args.speichern)
+        train_selfplay(args.episoden, args.speichern, args.device)
     else:
-        train(args.gegner, args.episoden, args.speichern)
+        train(args.gegner, args.episoden, args.speichern, args.device)

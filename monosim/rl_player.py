@@ -11,7 +11,7 @@ from monosim.player import Player
 # ------------------------------------------------------------------ device
 
 def _get_device():
-    if torch.backends.mps.is_available():
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
         return torch.device('mps')
     if torch.cuda.is_available():
         return torch.device('cuda')
@@ -65,13 +65,14 @@ class RLAgent:
     """Enthält Netzwerk, Replay-Buffer und Trainingslogik. Wird über Episoden hinweg geteilt."""
 
     STATE_DIM = 14
-    ACTION_DIM = 5
-    # 0=nicht bieten, dann 50/100/150/200 % des Normalpreises (gedeckelt durch Bargeld)
-    BID_FRACTIONS = [0.0, 0.5, 1.0, 1.5, 2.0]
+    ACTION_DIM = 17
+    # 0=nicht bieten, dann 50/100/.../800 als Absolutbeträge (gedeckelt durch Bargeld)
+    BID_AMOUNTS = list(range(0, 850, 50))
 
     def __init__(self, lr=1e-3, gamma=0.99, buffer_size=200000,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9998):
-        self.device = _get_device()
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9998,
+                 device='cpu'):
+        self.device = torch.device(device)
         self.q_network      = QNetwork(self.STATE_DIM, self.ACTION_DIM).to(self.device)
         self.target_network = QNetwork(self.STATE_DIM, self.ACTION_DIM).to(self.device)
         self.target_network.load_state_dict(self.q_network.state_dict())
@@ -280,7 +281,7 @@ class RLPlayer(Player):
         action = self.agent.select_action(state)
         self._cached_action = (dict_property_info, state, action)
 
-        if RLAgent.BID_FRACTIONS[action] > 0.0:
+        if RLAgent.BID_AMOUNTS[action] > 0:
             return True
 
         # Aktion 0: Auktion überspringen — fixe Strafe (= Kaufbonus negativ)
@@ -319,10 +320,10 @@ class RLPlayer(Player):
             self._value_acquired        = 0.0
             self._opp_complete_snapshot = self._count_opp_complete_groups()
 
-        fraction = RLAgent.BID_FRACTIONS[action]
-        if fraction == 0.0:
+        amount = RLAgent.BID_AMOUNTS[action]
+        if amount == 0:
             return 0
-        return min(int(fraction * dict_property_info['price']), self._cash)
+        return min(amount, self._cash)
 
     # ---------------------------------------------------------------- episode end
 

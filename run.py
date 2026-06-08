@@ -30,10 +30,10 @@ ALL_TYPES = list(PLAYER_TYPES.keys()) + ['rl']
 
 
 def make_player(player_type, name, number, bank, list_board, dict_roads, dict_properties,
-                community_deck, chance_deck, model_path=None):
+                community_deck, chance_deck, model_path=None, device='cpu'):
     if player_type == 'rl':
         from monosim.rl_player import RLAgent, RLPlayer
-        agent = RLAgent()
+        agent = RLAgent(device=device)
         if model_path and os.path.exists(model_path):
             agent.load(model_path)
         agent.epsilon = 0.0  # kein Exploration beim Testen
@@ -44,7 +44,7 @@ def make_player(player_type, name, number, bank, list_board, dict_roads, dict_pr
                        community_deck, chance_deck)
 
 
-def run_simulation(player1_type, player2_type, num_games, start_seed, model_path=None, log_dir=None):
+def run_simulation(player1_type, player2_type, num_games, start_seed, model_path=None, log_dir=None, device='cpu'):
     wins = {player1_type + '_1': 0, player2_type + '_2': 0, 'niemand': 0}
 
     if log_dir:
@@ -61,9 +61,9 @@ def run_simulation(player1_type, player2_type, num_games, start_seed, model_path
         chance_deck      = list(get_chance_cards().keys())
 
         p1 = make_player(player1_type, player1_type, 1, bank, list_board, dict_roads,
-                         dict_properties, community_deck, chance_deck, model_path)
+                         dict_properties, community_deck, chance_deck, model_path, device)
         p2 = make_player(player2_type, player2_type, 2, bank, list_board, dict_roads,
-                         dict_properties, community_deck, chance_deck, model_path)
+                         dict_properties, community_deck, chance_deck, model_path, device)
 
         p1.meet_other_players([p2])
         p2.meet_other_players([p1])
@@ -115,11 +115,13 @@ def main():
                         help='Pfad zum gespeicherten RL-Modell (Standard: rl_model.pt)')
     parser.add_argument('--logs', default=None, metavar='VERZEICHNIS',
                         help='Verzeichnis für Spiel-Logs (z.B. logs/)')
+    parser.add_argument('--device', default='cpu', metavar='GERÄT',
+                        help='PyTorch-Device (cpu, cuda, mps) — Standard: cpu')
 
     args = parser.parse_args()
 
     print(f'Simuliere {args.spiele} Spiele: {args.spieler1} vs {args.spieler2} ...')
-    wins = run_simulation(args.spieler1, args.spieler2, args.spiele, args.seed, args.modell, args.logs)
+    wins = run_simulation(args.spieler1, args.spieler2, args.spiele, args.seed, args.modell, args.logs, args.device)
 
     p1_key = args.spieler1 + '_1'
     p2_key = args.spieler2 + '_2'
