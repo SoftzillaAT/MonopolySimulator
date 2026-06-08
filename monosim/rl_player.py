@@ -146,9 +146,10 @@ class RLPlayer(Player):
     # Bei 200 % Listenpreis:                        -4m + 3m = -m → negativ
     PROPERTY_VALUE_MULT  = 3
     REWARD_SCALE         = 500.0
-    TERMINAL_REWARD      = 5.0
+    TERMINAL_REWARD      = 10.0
     COLOR_PAIR_BONUS     = 200.0   # Erstes Paar in einer 3er-Gruppe
     COLOR_COMPLETE_BONUS = 500.0   # Farbgruppe vervollständigt
+    SKIP_PENALTY_MULT    = 1.0     # Strafe fürs Überspringen = mortgage_value * MULT * SKIP_PENALTY_MULT
 
     def __init__(self, name, number, bank, list_board, dict_roads, dict_properties,
                  community_cards_deck, chance_cards_deck=None, agent=None, training=True):
@@ -268,7 +269,25 @@ class RLPlayer(Player):
         state  = self._get_state(dict_property_info)
         action = self.agent.select_action(state)
         self._cached_action = (dict_property_info, state, action)
-        return RLAgent.BID_FRACTIONS[action] > 0.0
+
+        if RLAgent.BID_FRACTIONS[action] > 0.0:
+            return True
+
+        # Aktion 0: Auktion überspringen — Strafe proportional zum verpassten Grundstückswert
+        if self.training:
+            mortgage_val = dict_property_info.get('mortgage_value', dict_property_info['price'] / 2)
+            skip_penalty = -(mortgage_val * self.SKIP_PENALTY_MULT) / self.REWARD_SCALE
+            skip_penalty = float(np.clip(skip_penalty, -3.0, 0.0))
+            next_state   = state  # kein Zustandswechsel
+            if self._pending_state is not None:
+                reward = self._compute_reward() + skip_penalty
+                self.agent.replay_buffer.push(
+                    self._pending_state, self._pending_action, reward, next_state, False)
+                self._pending_state  = None
+                self._pending_action = None
+                self._cash_snapshot  = self._cash
+                self._value_acquired = 0.0
+        return False
 
     def bid(self, dict_property_info, player_offer):
         if self._cash < self.AUCTION_MINIMUM_BID:

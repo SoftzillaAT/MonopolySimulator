@@ -1040,6 +1040,10 @@ class Player:
             best_bidder.buy_property(dict_property_info)
         dict_property_info['price'] = orig_price
 
+        self._bank.setdefault('_game_log', []).append(
+            f"{best_bidder._name} kauft '{property_name}' — gezahlt: {winning_price} (Normalpreis: {orig_price})"
+        )
+
     # ------------------------------------------------------------------ bankruptcy
 
     def declare_bankruptcy(self, creditor=None):
