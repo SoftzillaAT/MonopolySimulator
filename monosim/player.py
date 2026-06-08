@@ -1040,8 +1040,9 @@ class Player:
             best_bidder.buy_property(dict_property_info)
         dict_property_info['price'] = orig_price
 
+        balances = ', '.join(f"{p._name}: {p._cash}" for p in all_players)
         self._bank.setdefault('_game_log', []).append(
-            f"{best_bidder._name} kauft '{property_name}' — gezahlt: {winning_price} (Normalpreis: {orig_price})"
+            f"{best_bidder._name} kauft '{property_name}' — gezahlt: {winning_price} (Normalpreis: {orig_price}) | Kontostand: {balances}"
         )
 
     # ------------------------------------------------------------------ bankruptcy

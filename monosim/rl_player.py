@@ -8,17 +8,29 @@ from collections import deque
 from monosim.player import Player
 
 
+# ------------------------------------------------------------------ device
+
+def _get_device():
+    if torch.backends.mps.is_available():
+        return torch.device('mps')
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    return torch.device('cpu')
+
+
 # ------------------------------------------------------------------ network
 
 class QNetwork(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(state_dim, 128),
+            nn.Linear(state_dim, 256),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(64, action_dim),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
         )
 
     def forward(self, x):
@@ -57,10 +69,11 @@ class RLAgent:
     # 0=nicht bieten, dann 50/100/150/200 % des Normalpreises (gedeckelt durch Bargeld)
     BID_FRACTIONS = [0.0, 0.5, 1.0, 1.5, 2.0]
 
-    def __init__(self, lr=1e-3, gamma=0.99, buffer_size=50000,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9995):
-        self.q_network      = QNetwork(self.STATE_DIM, self.ACTION_DIM)
-        self.target_network = QNetwork(self.STATE_DIM, self.ACTION_DIM)
+    def __init__(self, lr=1e-3, gamma=0.99, buffer_size=200000,
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.9998):
+        self.device = _get_device()
+        self.q_network      = QNetwork(self.STATE_DIM, self.ACTION_DIM).to(self.device)
+        self.target_network = QNetwork(self.STATE_DIM, self.ACTION_DIM).to(self.device)
         self.target_network.load_state_dict(self.q_network.state_dict())
 
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=lr)
@@ -79,7 +92,7 @@ class RLAgent:
         if random.random() < self.epsilon:
             return random.randint(0, self.ACTION_DIM - 1)
         with torch.no_grad():
-            state_t = torch.FloatTensor(state).unsqueeze(0)
+            state_t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             return self.q_network(state_t).argmax().item()
 
     def train_step(self):
@@ -88,11 +101,11 @@ class RLAgent:
 
         states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
 
-        states_t      = torch.FloatTensor(states)
-        actions_t     = torch.LongTensor(actions).unsqueeze(1)
-        rewards_t     = torch.FloatTensor(rewards)
-        next_states_t = torch.FloatTensor(next_states)
-        dones_t       = torch.FloatTensor(dones)
+        states_t      = torch.FloatTensor(states).to(self.device)
+        actions_t     = torch.LongTensor(actions).unsqueeze(1).to(self.device)
+        rewards_t     = torch.FloatTensor(rewards).to(self.device)
+        next_states_t = torch.FloatTensor(next_states).to(self.device)
+        dones_t       = torch.FloatTensor(dones).to(self.device)
 
         q_values = self.q_network(states_t).gather(1, actions_t).squeeze(1)
         with torch.no_grad():
@@ -121,7 +134,7 @@ class RLAgent:
         print(f'Modell gespeichert: {path}')
 
     def load(self, path):
-        data = torch.load(path, weights_only=True)
+        data = torch.load(path, weights_only=True, map_location=self.device)
         self.q_network.load_state_dict(data['q_network'])
         self.target_network.load_state_dict(data['q_network'])
         self.epsilon     = data.get('epsilon', self.epsilon_end)
@@ -140,16 +153,11 @@ class RLPlayer(Player):
         +5 Sieg / -5 Niederlage
     """
 
-    # Eigenwertschätzung = mortgage_value * PROPERTY_VALUE_MULT
-    # Bei Listenpreis (≈ 2 × mortgage) ergibt das: -2m + 3m = +m → positiv
-    # Bei 150 % Listenpreis:                        -3m + 3m = 0  → neutral
-    # Bei 200 % Listenpreis:                        -4m + 3m = -m → negativ
-    PROPERTY_VALUE_MULT  = 3
-    REWARD_SCALE         = 500.0
-    TERMINAL_REWARD      = 10.0
-    COLOR_PAIR_BONUS     = 200.0   # Erstes Paar in einer 3er-Gruppe
-    COLOR_COMPLETE_BONUS = 500.0   # Farbgruppe vervollständigt
-    SKIP_PENALTY_MULT    = 1.0     # Strafe fürs Überspringen = mortgage_value * MULT * SKIP_PENALTY_MULT
+    REWARD_SCALE             = 500.0
+    TERMINAL_REWARD          = 10.0
+    COLOR_PAIR_BONUS         = 200.0   # Eigenes erstes Paar in einer 3er-Gruppe
+    COLOR_COMPLETE_BONUS     = 500.0   # Eigene Farbgruppe vervollständigt
+    OPP_COLOR_COMPLETE_PENALTY = 500.0 # Gegner vervollständigt eine Farbgruppe
 
     def __init__(self, name, number, bank, list_board, dict_roads, dict_properties,
                  community_cards_deck, chance_cards_deck=None, agent=None, training=True):
@@ -165,23 +173,28 @@ class RLPlayer(Player):
         self._reset_tracking()
 
     def _reset_tracking(self):
-        self._pending_state  = None
-        self._pending_action = None
-        self._cash_snapshot  = None
-        self._value_acquired = 0.0   # akkumulierter Grundstückswert + Farbboni
-        self._cached_action  = None  # (property_info, state, action) — von want_to_auction gesetzt
+        self._pending_state          = None
+        self._pending_action         = None
+        self._value_acquired         = 0.0   # Farbboni für eigene Gruppen
+        self._opp_complete_snapshot  = 0     # komplette Gegner-Farbgruppen beim letzten Snapshot
+        self._cached_action          = None  # (property_info, state, action) — von want_to_auction gesetzt
 
     # ---------------------------------------------------------------- reward helpers
 
+    def _count_opp_complete_groups(self):
+        opponents = [p for p in self._dict_players.values() if not p.has_lost()]
+        return sum(
+            1 for opp in opponents
+            for color, total in self._color_totals.items()
+            if opp._dict_owned_colors.get(color, 0) == total
+        )
+
     def _compute_reward(self):
-        if self._cash_snapshot is None:
-            return 0.0
-        cash_delta = self._cash - self._cash_snapshot
-        raw = (cash_delta + self._value_acquired) / self.REWARD_SCALE
-        return float(np.clip(raw, -3.0, 3.0))
+        opp_new_complete = self._count_opp_complete_groups() - self._opp_complete_snapshot
+        opp_penalty = -opp_new_complete * self.OPP_COLOR_COMPLETE_PENALTY
+        return (self._value_acquired + opp_penalty) / self.REWARD_SCALE
 
     def _color_bonus(self, color):
-        """Bonus nach einem Kauf basierend auf dem neuen Besitzstand der Farbgruppe."""
         if not color or color not in self._color_totals:
             return 0.0
         owned = self._dict_owned_colors.get(color, 0)
@@ -197,13 +210,10 @@ class RLPlayer(Player):
     def buy(self, dict_road_info, road_name):
         super().buy(dict_road_info, road_name)
         if self.training:
-            self._value_acquired += dict_road_info['mortgage_value'] * self.PROPERTY_VALUE_MULT
             self._value_acquired += self._color_bonus(dict_road_info.get('color'))
 
     def buy_property(self, dict_property_info):
         super().buy_property(dict_property_info)
-        if self.training:
-            self._value_acquired += dict_property_info['mortgage_value'] * self.PROPERTY_VALUE_MULT
 
     # ---------------------------------------------------------------- state (14 features)
 
@@ -273,11 +283,9 @@ class RLPlayer(Player):
         if RLAgent.BID_FRACTIONS[action] > 0.0:
             return True
 
-        # Aktion 0: Auktion überspringen — Strafe proportional zum verpassten Grundstückswert
+        # Aktion 0: Auktion überspringen — fixe Strafe (= Kaufbonus negativ)
         if self.training:
-            mortgage_val = dict_property_info.get('mortgage_value', dict_property_info['price'] / 2)
-            skip_penalty = -(mortgage_val * self.SKIP_PENALTY_MULT) / self.REWARD_SCALE
-            skip_penalty = float(np.clip(skip_penalty, -3.0, 0.0))
+            skip_penalty = -20.0 / self.REWARD_SCALE  # -0.04 normalisiert
             next_state   = state  # kein Zustandswechsel
             if self._pending_state is not None:
                 reward = self._compute_reward() + skip_penalty
@@ -285,7 +293,6 @@ class RLPlayer(Player):
                     self._pending_state, self._pending_action, reward, next_state, False)
                 self._pending_state  = None
                 self._pending_action = None
-                self._cash_snapshot  = self._cash
                 self._value_acquired = 0.0
         return False
 
@@ -307,10 +314,10 @@ class RLPlayer(Player):
                 self.agent.replay_buffer.push(
                     self._pending_state, self._pending_action, reward, state, False)
 
-            self._pending_state  = state
-            self._pending_action = action
-            self._cash_snapshot  = self._cash
-            self._value_acquired = 0.0
+            self._pending_state         = state
+            self._pending_action        = action
+            self._value_acquired        = 0.0
+            self._opp_complete_snapshot = self._count_opp_complete_groups()
 
         fraction = RLAgent.BID_FRACTIONS[action]
         if fraction == 0.0:

@@ -1,0 +1,31 @@
+Spiel 0: rl vs dummy
+Runden: 99 | Ergebnis: rl gewonnen
+------------------------------------------------------------
+rl kauft 'kings cross station' — gezahlt: 200 (Normalpreis: 200) | Kontostand: rl: 1300, dummy: 1500
+rl kauft 'pentonville road' — gezahlt: 121 (Normalpreis: 120) | Kontostand: dummy: 1500, rl: 1179
+rl kauft 'Electric company' — gezahlt: 151 (Normalpreis: 150) | Kontostand: rl: 1028, dummy: 1500
+dummy kauft 'bow street' — gezahlt: 180 (Normalpreis: 180) | Kontostand: dummy: 1320, rl: 1028
+rl kauft 'marylebone station' — gezahlt: 200 (Normalpreis: 200) | Kontostand: rl: 828, dummy: 1320
+dummy kauft 'trafalgar square' — gezahlt: 240 (Normalpreis: 240) | Kontostand: dummy: 1080, rl: 828
+dummy kauft 'water works' — gezahlt: 150 (Normalpreis: 150) | Kontostand: dummy: 930, rl: 1028
+dummy kauft 'park lane' — gezahlt: 176 (Normalpreis: 350) | Kontostand: dummy: 754, rl: 1028
+rl kauft 'euston road' — gezahlt: 101 (Normalpreis: 100) | Kontostand: dummy: 968, rl: 913
+rl kauft 'Fenchurch st. station' — gezahlt: 200 (Normalpreis: 200) | Kontostand: rl: 713, dummy: 968
+dummy kauft 'regent street' — gezahlt: 151 (Normalpreis: 300) | Kontostand: rl: 713, dummy: 817
+dummy kauft 'fleet street' — gezahlt: 220 (Normalpreis: 220) | Kontostand: dummy: 597, rl: 713
+rl kauft 'whitechapel road' — gezahlt: 61 (Normalpreis: 60) | Kontostand: rl: 852, dummy: 597
+rl kauft 'strand' — gezahlt: 220 (Normalpreis: 220) | Kontostand: rl: 632, dummy: 597
+dummy kauft 'liverpool st station' — gezahlt: 200 (Normalpreis: 200) | Kontostand: dummy: 425, rl: 604
+dummy kauft 'oxford street' — gezahlt: 151 (Normalpreis: 300) | Kontostand: rl: 604, dummy: 474
+dummy kauft 'northumberland avenue' — gezahlt: 160 (Normalpreis: 160) | Kontostand: dummy: 214, rl: 904
+rl kauft 'marlborough street' — gezahlt: 157 (Normalpreis: 180) | Kontostand: rl: 765, dummy: 196
+rl kauft 'old kent road' — gezahlt: 61 (Normalpreis: 60) | Kontostand: rl: 833, dummy: 317
+rl kauft 'pall mall' — gezahlt: 140 (Normalpreis: 140) | Kontostand: rl: 693, dummy: 517
+dummy kauft 'whitehall' — gezahlt: 140 (Normalpreis: 140) | Kontostand: dummy: 387, rl: 683
+rl kauft 'mayfair' — gezahlt: 325 (Normalpreis: 400) | Kontostand: rl: 340, dummy: 405
+rl kauft 'the angel islington' — gezahlt: 101 (Normalpreis: 100) | Kontostand: rl: 439, dummy: 405
+rl kauft 'piccadilly' — gezahlt: 280 (Normalpreis: 280) | Kontostand: rl: 59, dummy: 405
+dummy kauft 'bond street' — gezahlt: 225 (Normalpreis: 320) | Kontostand: dummy: 165, rl: 224
+rl kauft 'coventry street' — gezahlt: 86 (Normalpreis: 260) | Kontostand: rl: 446, dummy: 107
+rl kauft 'leicester square' — gezahlt: 89 (Normalpreis: 260) | Kontostand: rl: 553, dummy: 111
+rl kauft 'vine street' — gezahlt: 145 (Normalpreis: 200) | Kontostand: dummy: 181, rl: 438
