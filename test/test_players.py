@@ -969,10 +969,10 @@ def test_pay_tax():
     player1.pay_tax(40)
     assert player1._cash == 810
 
-    # Player mortgages
+    # Player sells house (25) then pays tax (20): 10 + 25 - 20 = 15
     player1.set_cash(10)
     player1.pay_tax(20)
-    assert player1._cash == 20
+    assert player1._cash == 15
 
     # Player loses
     player1.pay_tax(50)

@@ -1,5 +1,5 @@
 from monosim.player import Player
-from monosim.board import get_board, get_roads, get_properties, get_community_chest_cards, get_bank
+from monosim.board import get_board, get_roads, get_properties, get_community_chest_cards, get_chance_cards, get_bank
 import types
 
 def roll_dice_temp(self):
@@ -64,8 +64,10 @@ if __name__ == '__main__':
         dict_properties = get_properties()
         dict_community_chest_cards = get_community_chest_cards()
         community_cards_deck = list(dict_community_chest_cards.keys())
-        player1 = Player('player1', 1, bank, list_board, dict_roads, dict_properties, community_cards_deck)
-        player2 = Player('player2', 2, bank, list_board, dict_roads, dict_properties, community_cards_deck)
+        dict_chance_cards = get_chance_cards()
+        chance_cards_deck = list(dict_chance_cards.keys())
+        player1 = Player('player1', 1, bank, list_board, dict_roads, dict_properties, community_cards_deck, chance_cards_deck)
+        player2 = Player('player2', 2, bank, list_board, dict_roads, dict_properties, community_cards_deck, chance_cards_deck)
 
         # player1.roll_dice = roll_dice_temp
         # player1.roll_dice = types.MethodType(roll_dice_temp, player1)

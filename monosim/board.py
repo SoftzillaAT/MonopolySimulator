@@ -625,6 +625,26 @@ def get_color_to_house_mapping():
     return dict_color_to_house_mapping
 
 
+def get_chance_cards():
+    return {
+        "advance_to_go": "ADVANCE TO GO. COLLECT 200.",
+        "advance_to_trafalgar": "ADVANCE TO TRAFALGAR SQUARE. IF YOU PASS GO, COLLECT 200.",
+        "advance_to_mayfair": "TAKE A WALK TO MAYFAIR.",
+        "advance_to_pall_mall": "ADVANCE TO PALL MALL. IF YOU PASS GO, COLLECT 200.",
+        "advance_to_station": "ADVANCE TO THE NEAREST STATION. IF OWNED, PAY TWICE THE RENT.",
+        "advance_to_utility": "ADVANCE TO THE NEAREST UTILITY. IF OWNED, PAY TEN TIMES DICE.",
+        "bank_dividend": "BANK PAYS YOU DIVIDEND OF 50.",
+        "out_of_jail": "GET OUT OF JAIL FREE.",
+        "go_back_3": "GO BACK 3 SPACES.",
+        "go_to_jail": "GO TO JAIL. DO NOT PASS GO.",
+        "general_repairs": "MAKE GENERAL REPAIRS: PAY 25 PER HOUSE AND 100 PER HOTEL.",
+        "pay_poor_tax": "PAY POOR TAX OF 15.",
+        "advance_to_kings_cross": "ADVANCE TO KINGS CROSS STATION.",
+        "elected_chairman": "YOU HAVE BEEN ELECTED CHAIRMAN. PAY EACH PLAYER 50.",
+        "building_loan": "YOUR BUILDING LOAN MATURES. COLLECT 150.",
+    }
+
+
 def get_community_chest_cards():
 
     return {"stock_sale": "FROM SALE OF STOCK YOU GET 50.",

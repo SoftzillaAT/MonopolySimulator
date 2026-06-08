@@ -13,7 +13,7 @@ import random
 
 
 class Player:
-    def __init__(self, name, number, bank, list_board, dict_roads, dict_properties, community_cards_deck):
+    def __init__(self, name, number, bank, list_board, dict_roads, dict_properties, community_cards_deck, chance_cards_deck=None):
         self._name = name
         self._number = number
         self._list_board = list_board
@@ -42,6 +42,7 @@ class Player:
         self._has_lost = False
         self.color_to_house_mapping = get_color_to_house_mapping()
         self.community_cards_deck = community_cards_deck
+        self.chance_cards_deck = chance_cards_deck if chance_cards_deck is not None else []
 
     def roll_dice(self):
         """ Simulate the roll of two dice. Returns two int values between 1 and 6.
@@ -97,10 +98,10 @@ class Player:
         else:
             return amount <= self._cash
 
-    def buy_or_bid(self, dict_road_info):
-        """ Determine whether to buy or to bid the road"""
-        # TODO placeholder. To implement.
-        return 'buy'
+    AUCTION_MINIMUM_BID = 10
+
+    def want_to_auction(self, dict_property_info):
+        return True
 
     def pay_bank(self, amount):
         """ Pay amount to the bank. Money are subtracted from player's cash and added to bank's total cash.
@@ -225,11 +226,6 @@ class Player:
         opponent_name = dict_property_info['belongs_to']
         self.pay_opponent(opponent_name, amount)
 
-    def bid(self, dict_road_info, player_offer):
-        """ Counter-bid an offer"""
-        # TODO placeholder. To implement.
-        return None
-
     def mortgage_or_bid(self, dict_road_info):
         """ Determine whether to mortgage (to buy) or bid"""
         # This function is incomplete. In reality, the player should decide whether to mortgage or bid to try buuying
@@ -241,18 +237,27 @@ class Player:
         if property_type == 'station':
             if property_name not in self._list_owned_stations:
                 raise Exception('Station {} not owned by player {}'.format(property_name, self._name))
+            if self._dict_properties[property_name]['is_mortgaged']:
+                raise Exception('Station {} is already mortgaged'.format(property_name))
             self._dict_properties[property_name]['is_mortgaged'] = True
             mortgage_value = self._dict_properties[property_name]['mortgage_value']
             self._list_mortgaged_stations.append(property_name)
         elif property_type == 'utility':
             if property_name not in self._list_owned_utilities:
                 raise Exception('Utility {} not owned by player {}'.format(property_name, self._name))
+            if self._dict_properties[property_name]['is_mortgaged']:
+                raise Exception('Utility {} is already mortgaged'.format(property_name))
             self._dict_properties[property_name]['is_mortgaged'] = True
             mortgage_value = self._dict_properties[property_name]['mortgage_value']
             self._list_mortgaged_utilities.append(property_name)
         elif property_type == 'road':
             if property_name not in self._list_owned_roads:
                 raise Exception('Road {} not owned by player {}'.format(property_name, self._name))
+            if self._dict_roads[property_name]['is_mortgaged']:
+                raise Exception('Road {} is already mortgaged'.format(property_name))
+            houses, hotels = self._dict_owned_houses_hotels.get(property_name, (0, 0))
+            if houses > 0 or hotels > 0:
+                raise Exception('Road {} has houses/hotels and cannot be mortgaged'.format(property_name))
             self._dict_roads[property_name]['is_mortgaged'] = True
             mortgage_value = self._dict_roads[property_name]['mortgage_value']
             self._list_mortgaged_roads.append(property_name)
@@ -260,6 +265,7 @@ class Player:
             raise Exception('Property type {} unknown'.format(property_type))
 
         self._properties_total_mortgageable_amount -= mortgage_value
+        self._bank['cash'] -= mortgage_value
         self._cash += mortgage_value
 
     def unmortgage(self, property_name, property_type):
@@ -294,9 +300,13 @@ class Player:
         else:
             raise Exception('Property type {} unknown'.format(property_type))
 
+        if self._cash < unmortgage_value:
+            raise Exception('Player {} has insufficient cash ({}) to unmortgage {} (costs {})'.format(
+                self._name, self._cash, property_name, unmortgage_value))
+
         self._properties_total_mortgageable_amount += mortgage_value
         self._cash -= unmortgage_value
-        self._bank['cash'] = unmortgage_value
+        self._bank['cash'] += unmortgage_value
 
     def choose_mortgage_properties(self, amount):
         """ Return a list of properties to mortgage given a required amount. This function
@@ -311,7 +321,8 @@ class Player:
 
         list_mortgageable_roads = [('road', road_name, self._dict_roads[road_name]['mortgage_value'])
                                    for road_name in self._list_owned_roads
-                                   if self._dict_roads[road_name]['is_mortgaged'] is False]
+                                   if self._dict_roads[road_name]['is_mortgaged'] is False
+                                   and self._dict_owned_houses_hotels.get(road_name, (0, 0)) == (0, 0)]
         list_mortgageable_stations = [('station', station_name, self._dict_properties[station_name]['mortgage_value'])
                                       for station_name in self._list_owned_stations
                                       if self._dict_properties[station_name]['is_mortgaged'] is False]
@@ -354,40 +365,75 @@ class Player:
         list_unmortgage_properties = []
         for road_name in self._list_mortgaged_roads:
             unmortgage_value = self._dict_roads[road_name]['unmortgage_value']
-            if unmortgage_value + total_unmortgage_value < self._cash:
+            if unmortgage_value + total_unmortgage_value <= self._cash:
                 list_unmortgage_properties.append(('road', road_name))
                 total_unmortgage_value += unmortgage_value
         for station_name in self._list_mortgaged_stations:
             unmortgage_value = self._dict_properties[station_name]['unmortgage_value']
-            if unmortgage_value + total_unmortgage_value < self._cash:
+            if unmortgage_value + total_unmortgage_value <= self._cash:
                 list_unmortgage_properties.append(('station', station_name))
                 total_unmortgage_value += unmortgage_value
         for utility_name in self._list_mortgaged_utilities:
             unmortgage_value = self._dict_properties[utility_name]['unmortgage_value']
-            if unmortgage_value + total_unmortgage_value < self._cash:
+            if unmortgage_value + total_unmortgage_value <= self._cash:
                 list_unmortgage_properties.append(('utility', utility_name))
                 total_unmortgage_value += unmortgage_value
 
         return list_unmortgage_properties
 
-    def get_money_from_mortgages(self, amount_required):
-        """ Mortgage the necessary (owned) properties to get the amount of money required.
-            The process involves:
-                * select the properties to mortgage
-                * mortgage the properties
-        :param amount_required: (int) Amount of money required.
-        :return:
-        """
+    def sell_house(self, road):
+        """Sell one house at half price. House token is returned to the bank."""
+        houses, hotels = self._dict_owned_houses_hotels.get(road, (0, 0))
+        if houses == 0:
+            raise Exception('No houses on road {} to sell'.format(road))
+        house_value = self._dict_roads[road]['houses_cost'] // 2
+        self._bank['cash'] -= house_value
+        self._cash += house_value
+        self._bank['houses'] += 1
+        self._dict_owned_houses_hotels[road] = (houses - 1, hotels)
 
+    def sell_hotel(self, road):
+        """Sell a hotel at half price. Hotel token is returned to the bank."""
+        houses, hotels = self._dict_owned_houses_hotels.get(road, (0, 0))
+        if hotels == 0:
+            raise Exception('No hotel on road {} to sell'.format(road))
+        hotel_value = self._dict_roads[road]['hotels_cost'] // 2
+        self._bank['cash'] -= hotel_value
+        self._cash += hotel_value
+        self._bank['hotels'] += 1
+        self._dict_owned_houses_hotels[road] = (houses, hotels - 1)
+
+    def get_money_from_mortgages(self, amount_required):
+        """Raise at least amount_required by selling houses/hotels first, then mortgaging.
+
+        Monopoly rule: houses must be sold before a road can be mortgaged.
+        Houses and hotels are sold at half their purchase price.
+        """
         if self._cash + self._properties_total_mortgageable_amount < amount_required:
             raise Exception('player {} has insufficient funds'.format(self._name))
 
-        #  choose properties to mortgage
-        list_properties = self.choose_mortgage_properties(amount_required)
+        # Sell houses/hotels until enough has been raised or all are sold
+        raised = 0
+        for road_name in list(self._list_owned_roads):
+            if raised >= amount_required:
+                break
+            if self._dict_roads[road_name]['is_mortgaged']:
+                continue
+            houses, hotels = self._dict_owned_houses_hotels.get(road_name, (0, 0))
+            if hotels > 0:
+                raised += self._dict_roads[road_name]['hotels_cost'] // 2
+                self.sell_hotel(road_name)
+            houses = self._dict_owned_houses_hotels.get(road_name, (0, 0))[0]
+            while houses > 0 and raised < amount_required:
+                raised += self._dict_roads[road_name]['houses_cost'] // 2
+                self.sell_house(road_name)
+                houses -= 1
 
-        #  mortgage properties
-        for property in list_properties:
-            self.mortgage(property[1], property[0])
+        # Mortgage properties for any remaining shortfall
+        if raised < amount_required:
+            list_properties = self.choose_mortgage_properties(amount_required - raised)
+            for property in list_properties:
+                self.mortgage(property[1], property[0])
 
     def mortgage_and_pay_rent(self, dict_property_info):
         """ Mortgage the necessary properties to pay the rent for the given property.
@@ -404,13 +450,7 @@ class Player:
         if self._properties_total_mortgageable_amount + self._cash < property_rent:
             raise Exception('player {} cannot rent (insufficient funds)'.format(self._name))
 
-        #  choose properties to mortgage
-        list_properties = self.choose_mortgage_properties(amount_required)
-
-        #  mortgage properties
-        for property in list_properties:
-            self.mortgage(property[1], property[0])
-
+        self.get_money_from_mortgages(amount_required)
         self.pay_rent(dict_property_info, property_rent)
 
     def mortgage_and_buy(self, dict_property_info, property_name, property_type):
@@ -582,14 +622,15 @@ class Player:
 
         return property_rent
 
-    def is_bankrupt(self, value_to_pay):
-        """ Check if player has enough money to pay, or if it needs to declare bankraptcy.
+    def is_bankrupt(self, value_to_pay, creditor=None):
+        """ Check if player has enough money to pay, or if it needs to declare bankruptcy.
 
         :param value_to_pay:  (int) Amount of money to pay.
+        :param creditor: (Player) Player owed the money, or None if owed to bank.
         :return: (bool) True if players is bankrupt, False if it's not.
         """
         if self._properties_total_mortgageable_amount + self._cash < value_to_pay:
-            self._has_lost = True
+            self.declare_bankruptcy(creditor)
         return self._has_lost
 
     def get_tax_value(self, tax_type):
@@ -706,17 +747,18 @@ class Player:
                             "No more hotels can be bought.".format(self._name, road))
 
         if self._bank['hotels'] > 0:
+            houses_owned, hotels_owned = self._dict_owned_houses_hotels[road]
+            if houses_owned != 4:
+                raise Exception("Player {} cannot buy a hotel in road {} if "
+                                "4 houses are not owned first".format(self._name, road))
             hotel_price = self._dict_roads[road]['hotels_cost']
             if self._cash < hotel_price:
                 raise Exception("Player {} has not enough money to buy a hotel in road {}".format(self._name, road))
 
             self.pay_bank(hotel_price)
-            houses_owned, hotels_owned = self._dict_owned_houses_hotels[road]
-            if houses_owned != 4:
-                raise Exception("Player {} cannot buy a hotel in road {} if "
-                                "4 houses are not owned first".format(self._name, road))
             self._dict_owned_houses_hotels[road] = (houses_owned, 1)
             self._bank['hotels'] -= 1
+            self._bank['houses'] += 4  # 4 houses are returned to the bank when buying a hotel
         else:
             raise Exception('The bank has no more hotels to sell.')
 
@@ -748,7 +790,10 @@ class Player:
     def get_out_of_jail(self):
         """ Player leaves the jail. Jail count is set to zero and the position updated with the latest dices values"""
         self._jail_count = 0
-        self._position = (self._position + self._dice_value)
+        new_position = (self._position + self._dice_value) % len(self._list_board)
+        if new_position < self._position:
+            self._cash += 200
+        self._position = new_position
 
     def pay_jail_or_wait(self):
         """ Determine whether the player wants to wait the next turn or pay to get out of the jail. This is used
@@ -816,13 +861,244 @@ class Player:
             amount_to_pay = 100 if board_cell_name == 'hospital_fees' else 50
             self.pay_tax(amount_to_pay)
         elif board_cell_name == 'jail':
-            self.go_to_jail
+            self.go_to_jail()
         elif board_cell_name == 'to_go':
             self._position = 0
             self._cash += 200
+        elif board_cell_name == 'out_of_jail':
+            self._exit_jail = True
+        elif board_cell_name == 'birthday':
+            for player in self._dict_players.values():
+                if not player.has_lost() and player._cash >= 10:
+                    player.pay_opponent(self._name, 10)
 
+
+    # ------------------------------------------------------------------ helpers
+
+    def _advance_to(self, target_position):
+        """Move to target_position, collecting 200 if passing Go."""
+        if target_position <= self._position:
+            self._cash += 200
+        self._position = target_position
+
+    def _get_nearest_station_position(self):
+        for pos in [5, 15, 25, 35]:
+            if pos > self._position:
+                return pos
+        return 5  # wrap around
+
+    def _get_nearest_utility_position(self):
+        for pos in [12, 28]:
+            if pos > self._position:
+                return pos
+        return 12  # wrap around
+
+    def _update_color_ownership(self, color):
+        """Recalculate whether this player owns all roads of a color."""
+        if all(self._dict_roads[r]['belongs_to'] == self._name
+               for r in self.color_to_house_mapping[color]):
+            self._dict_owned_colors[color] = True
+
+    def _chance_general_repairs(self):
+        count_houses = count_hotels = 0
+        for color in self.get_owned_colors():
+            for road in self.color_to_house_mapping[color]:
+                h, ho = self.get_houses_hotel_count(road)
+                count_houses += h
+                count_hotels += ho
+        total = 25 * count_houses + 100 * count_hotels
+        if total > 0:
+            self.pay_tax(total)
+
+    # ------------------------------------------------------------------ chance
+
+    def play_chance(self, card_name):
+        """Execute logic of the chosen chance card."""
+        station_names = {5: 'kings cross station', 15: 'marylebone station',
+                         25: 'Fenchurch st. station', 35: 'liverpool st station'}
+
+        if card_name == 'advance_to_go':
+            self._cash += 200
+            self._position = 0
+        elif card_name in ('advance_to_trafalgar', 'advance_to_mayfair',
+                           'advance_to_pall_mall', 'advance_to_kings_cross'):
+            targets = {'advance_to_trafalgar': 24, 'advance_to_mayfair': 39,
+                       'advance_to_pall_mall': 11, 'advance_to_kings_cross': 5}
+            target = targets[card_name]
+            self._advance_to(target)
+            cell = self._list_board[target]
+            if cell['type'] == 'road':
+                road_name = cell['name']
+                info = self._dict_roads[road_name]
+                owner = info['belongs_to']
+                if owner is None:
+                    if self.want_to_auction(info):
+                        self.run_auction(info, road_name, 'road')
+                elif owner != self._name and not info['is_mortgaged']:
+                    rent = self.estimate_rent_road(info)
+                    if self.have_enough_money(rent):
+                        self.pay_rent(info, rent)
+            elif cell['type'] == 'station':
+                station_name = cell['name']
+                info = self._dict_properties[station_name]
+                owner = info['belongs_to']
+                if owner is None:
+                    if self.want_to_auction(info):
+                        self.run_auction(info, station_name, 'station')
+                elif owner != self._name and not info['is_mortgaged']:
+                    rent = self.estimate_rent_station(info)
+                    if self.have_enough_money(rent):
+                        self.pay_rent(info, rent)
+        elif card_name == 'advance_to_station':
+            target = self._get_nearest_station_position()
+            self._advance_to(target)
+            station_name = station_names[target]
+            info = self._dict_properties[station_name]
+            owner = info['belongs_to']
+            if owner is None:
+                if self.want_to_auction(info):
+                    self.run_auction(info, station_name, 'station')
+            elif owner != self._name and not info['is_mortgaged']:
+                rent = self.estimate_rent_station(info) * 2  # double rent for chance card
+                if self.have_enough_money(rent):
+                    self.pay_rent(info, rent)
+        elif card_name == 'advance_to_utility':
+            utility_names = {12: 'Electric company', 28: 'water works'}
+            target = self._get_nearest_utility_position()
+            self._advance_to(target)
+            utility_name = utility_names[target]
+            info = self._dict_properties[utility_name]
+            owner = info['belongs_to']
+            if owner is None:
+                if self.want_to_auction(info):
+                    self.run_auction(info, utility_name, 'utility')
+            elif owner != self._name and not info['is_mortgaged']:
+                rent = self._dice_value * 10  # always 10x for chance card
+                if self.have_enough_money(rent):
+                    self.pay_rent(info, rent)
+        elif card_name == 'bank_dividend':
+            self._cash += 50
+        elif card_name == 'out_of_jail':
+            self._exit_jail = True
+        elif card_name == 'go_back_3':
+            self._position = (self._position - 3) % len(self._list_board)
+        elif card_name == 'go_to_jail':
+            self.go_to_jail()
+        elif card_name == 'general_repairs':
+            self._chance_general_repairs()
+        elif card_name == 'pay_poor_tax':
+            self.pay_tax(15)
+        elif card_name == 'elected_chairman':
+            for player in self._dict_players.values():
+                if not player.has_lost() and self._cash >= 50:
+                    self.pay_opponent(player._name, 50)
+        elif card_name == 'building_loan':
+            self._cash += 150
+
+    # ------------------------------------------------------------------ auction
+
+    def bid(self, dict_property_info, player_offer):
+        """Return bid amount (up to 80% of cash, capped at property price).
+        Returns 0 if the player cannot meet the minimum bid of AUCTION_MINIMUM_BID.
+        """
+        if self._cash < self.AUCTION_MINIMUM_BID:
+            return 0
+        return min(int(self._cash * 0.8), dict_property_info['price'])
+
+    def _prepare_to_pay(self, amount):
+        """Hook called before a winning auction purchase. Override to raise funds."""
+        pass
+
+    def run_auction(self, dict_property_info, property_name, property_type):
+        """Auction an unowned property among all active players.
+        The highest bidder wins. They pay second-highest bid + 1 (min AUCTION_MINIMUM_BID).
+        If no one meets the minimum, the property stays unowned.
+        """
+        all_players = [self] + list(self._dict_players.values())
+        active_players = [p for p in all_players if not p.has_lost()]
+
+        bids = sorted(
+            ((player.bid(dict_property_info, None), player) for player in active_players),
+            key=lambda x: x[0], reverse=True
+        )
+
+        if not bids or bids[0][0] < self.AUCTION_MINIMUM_BID:
+            return  # no valid bid — property stays unowned
+
+        best_bid, best_bidder = bids[0]
+        second_bid = bids[1][0] if len(bids) > 1 else 0
+        winning_price = max(self.AUCTION_MINIMUM_BID, second_bid + 1)
+        winning_price = min(winning_price, best_bid)  # never pay more than own bid
+
+        if best_bidder is self:  # nur der Auktionsinitiator ist im eigenen Zug
+            best_bidder._prepare_to_pay(winning_price)
+        orig_price = dict_property_info['price']
+        dict_property_info['price'] = winning_price
+        if property_type == 'road':
+            best_bidder.buy(dict_property_info, property_name)
+        else:
+            best_bidder.buy_property(dict_property_info)
+        dict_property_info['price'] = orig_price
+
+    # ------------------------------------------------------------------ bankruptcy
+
+    def declare_bankruptcy(self, creditor=None):
+        """Transfer all assets to creditor (or back to bank) and mark as lost."""
+        self._has_lost = True
+
+        # Return houses/hotels to bank
+        for road_name, (houses, hotels) in self._dict_owned_houses_hotels.items():
+            self._bank['houses'] += houses
+            self._bank['hotels'] += hotels
+
+        if creditor is not None:
+            creditor._cash += self._cash
+            for road_name in list(self._list_owned_roads):
+                self._dict_roads[road_name]['belongs_to'] = creditor._name
+                self._dict_roads[road_name]['is_mortgaged'] = False
+                creditor._list_owned_roads.append(road_name)
+                creditor._dict_owned_houses_hotels[road_name] = (0, 0)
+                creditor._properties_total_mortgageable_amount += self._dict_roads[road_name]['mortgage_value']
+                creditor._update_color_ownership(self._dict_roads[road_name]['color'])
+            for station_name in list(self._list_owned_stations):
+                self._dict_properties[station_name]['belongs_to'] = creditor._name
+                self._dict_properties[station_name]['is_mortgaged'] = False
+                creditor._list_owned_stations.append(station_name)
+                creditor._properties_total_mortgageable_amount += self._dict_properties[station_name]['mortgage_value']
+            for utility_name in list(self._list_owned_utilities):
+                self._dict_properties[utility_name]['belongs_to'] = creditor._name
+                self._dict_properties[utility_name]['is_mortgaged'] = False
+                creditor._list_owned_utilities.append(utility_name)
+                creditor._properties_total_mortgageable_amount += self._dict_properties[utility_name]['mortgage_value']
+        else:
+            self._bank['cash'] += self._cash
+            for road_name in self._list_owned_roads:
+                self._dict_roads[road_name]['belongs_to'] = None
+                self._dict_roads[road_name]['is_mortgaged'] = False
+            for station_name in self._list_owned_stations:
+                self._dict_properties[station_name]['belongs_to'] = None
+                self._dict_properties[station_name]['is_mortgaged'] = False
+            for utility_name in self._list_owned_utilities:
+                self._dict_properties[utility_name]['belongs_to'] = None
+                self._dict_properties[utility_name]['is_mortgaged'] = False
+
+        self._cash = 0
+        self._list_owned_roads = []
+        self._list_owned_stations = []
+        self._list_owned_utilities = []
+        self._list_mortgaged_roads = []
+        self._list_mortgaged_stations = []
+        self._list_mortgaged_utilities = []
+        self._dict_owned_houses_hotels = {}
+        self._properties_total_mortgageable_amount = 0
+        self._dict_owned_colors = {color: False for color in self._dict_owned_colors}
+
+    def _on_turn_start(self):
+        """Hook am Anfang jedes Zuges. Subklassen können hier Hypotheken aufnehmen o.ä."""
+        pass
 
     def play(self):
+        self._on_turn_start()
         roll_dices = True
         num_of_rolls = 0
 
@@ -840,7 +1116,7 @@ class Player:
 
             if (move_position):
                 self._dice_value = tuple_dices[0] + tuple_dices[1]
-                if self._position is not 10 or (self._position == 10 and self._free_visit):  # if player is not in jail
+                if self._position != 10 or (self._position == 10 and self._free_visit):  # if player is not in jail
                     self._position = (self._position + self._dice_value) % len(self._list_board)
                     self._free_visit = True if self._position == 10 else False
 
@@ -883,11 +1159,16 @@ class Player:
             if board_cell_type == 'jail' and not self._free_visit:
                 # In jail we do not play again
                 roll_dices = False
-                # Double roll
+                # Double roll → free
                 if tuple_dices[0] == tuple_dices[1]:
                     self.get_out_of_jail()
 
-                # Player has been 3 rounds in jail
+                # Use get-out-of-jail-free card
+                elif self._exit_jail:
+                    self._exit_jail = False
+                    self.get_out_of_jail()
+
+                # Player has been 3 rounds in jail → must pay
                 elif self._jail_count == 3:
                     if self.have_enough_money(50):
                         self.pay_bank(50)
@@ -920,32 +1201,17 @@ class Player:
                 if property_name in self._list_owned_roads or property_name in self._list_owned_stations or property_name in self._list_owned_utilities:
                     pass
                 elif property_owner is None:
-                    if self.have_enough_money(dict_property_info['price']):
-                        buy_bid = self.buy_or_bid(dict_property_info)
-                        if buy_bid == 'buy' and board_cell_type == 'road':
-                            self.buy(dict_property_info, property_name)
-                        elif buy_bid == 'buy' and board_cell_type != 'road':
-                            self.buy_property(dict_property_info)
-                        else:
-                            self.bid(dict_property_info, 'temp')
-                    elif self.have_enough_money(dict_property_info['price'], plus_mortgageable=True):
-                        mortgage_bid = self.mortgage_or_bid(dict_property_info)
-                        if mortgage_bid == 'mortgage':
-                            self.mortgage_and_buy(dict_property_info, property_name, board_cell_type)
-                        else:
-                            self.bid(dict_property_info, 'temp')
-                    else:
-                        # Players with no money should bid
-                        self.bid(dict_property_info, 'temp')
+                    if self.want_to_auction(dict_property_info):
+                        self.run_auction(dict_property_info, property_name, board_cell_type)
+                    # else: skip — property stays unowned
                 elif property_owner is not None and dict_property_info['is_mortgaged'] is False:
-                    # Have enough money to rent?
                     rent = self.estimate_rent(dict_property_info)
-                    if self.have_enough_money(rent):  # TODO should it check money + mortgageable amount?
+                    creditor = self._dict_players.get(property_owner)
+                    if self.have_enough_money(rent):
                         self.pay_rent(dict_property_info, rent)
                     else:
-                        if not self.is_bankrupt(rent):
+                        if not self.is_bankrupt(rent, creditor):
                             self.mortgage_and_pay_rent(dict_property_info)
-                    # self.make_offer(road_owner)  # This should be possible at any time in the game...
 
             elif board_cell_type == 'go' or board_cell_type == 'free parking':
                 pass
@@ -958,9 +1224,15 @@ class Player:
                 self.go_to_jail()
 
             elif board_cell_type == 'community chest':
-                card_name = self.community_cards_deck[0]  # Choose top card
-                self.community_cards_deck.append(self.community_cards_deck.pop(0))  # Put top card at the bottom of the deck
+                card_name = self.community_cards_deck[0]
+                self.community_cards_deck.append(self.community_cards_deck.pop(0))
                 self.play_community_chest(card_name)
+
+            elif board_cell_type == 'chance':
+                if self.chance_cards_deck:
+                    card_name = self.chance_cards_deck[0]
+                    self.chance_cards_deck.append(self.chance_cards_deck.pop(0))
+                    self.play_chance(card_name)
 
     @property
     def cash(self):
